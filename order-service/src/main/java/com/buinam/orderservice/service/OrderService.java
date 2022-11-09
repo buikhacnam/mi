@@ -1,5 +1,6 @@
 package com.buinam.orderservice.service;
 
+import com.buinam.orderservice.dto.InventoryResponse;
 import com.buinam.orderservice.dto.OrderRequest;
 import com.buinam.orderservice.model.Order;
 import com.buinam.orderservice.model.OrderLineItems;
@@ -9,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
 import java.util.UUID;
@@ -21,6 +23,9 @@ public class OrderService {
     @Autowired
     private OrderRepository orderRepository;
 
+    @Autowired
+    private WebClient webClient;
+
     public void placeOrder(OrderRequest orderRequest) {
         Order order = new Order();
         order.setOrderNumber(UUID.randomUUID().toString());
@@ -31,8 +36,36 @@ public class OrderService {
             orderLineItems.setSkuCode(orderLineItemsDto.getSkuCode());
             return orderLineItems;
         }).collect(Collectors.toList());
-        order.setOrderLineItemsList(orderLineItemsList);
-        orderRepository.save(order);
+        order.setOrderLineItemsList(orderLineItemsList); // save t_order_line_items in order (@OneToMany)
+
+        // call inventory-service to check if the product is available
+
+        // collect all skucodes from orderLineItemsList
+        List<String> skuCodes = orderLineItemsList.stream().map(orderLineItems -> orderLineItems.getSkuCode()).collect(Collectors.toList());
+
+        // call inventory-service to check if the product is available
+        InventoryResponse[] inventoryResponse = webClient.get()
+                .uri("http://localhost:8082/api/inventory", uriBuilder -> uriBuilder.queryParam("skuCode", skuCodes).build())
+                .retrieve()
+                .bodyToMono(InventoryResponse[].class)
+                .block();
+
+        log.info("Response received from inventory-service: " + inventoryResponse);
+
+        // check if all products are available
+        boolean isAllProductsAvailable = true;
+        for (InventoryResponse each : inventoryResponse) {
+            if (!each.isInStock()) {
+                isAllProductsAvailable = false;
+                break;
+            }
+        }
+        if (isAllProductsAvailable) {
+            orderRepository.save(order);
+        } else {
+            throw new RuntimeException("Product is not available");
+        }
+
         log.info("Order placed successfully with order number: " + order.getOrderNumber());
     }
 }
