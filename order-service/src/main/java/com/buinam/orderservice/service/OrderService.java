@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -26,7 +27,7 @@ public class OrderService {
     @Autowired
     private WebClient.Builder webClientBuilder;
 
-    public void placeOrder(OrderRequest orderRequest) {
+    public String placeOrder(OrderRequest orderRequest) {
         Order order = new Order();
         order.setOrderNumber(UUID.randomUUID().toString());
         List<OrderLineItems> orderLineItemsList = orderRequest.getOrderLineItemsDtoList().stream().map(orderLineItemsDto -> {
@@ -55,17 +56,18 @@ public class OrderService {
         // check if all products are available
         boolean isAllProductsAvailable = true;
         for (InventoryResponse each : inventoryResponse) {
+            System.out.println("Inventory: " + each.getSkuCode() + ": " + each.isInStock());
             if (!each.isInStock()) {
                 isAllProductsAvailable = false;
                 break;
             }
         }
-        if (isAllProductsAvailable) {
+        if (isAllProductsAvailable && inventoryResponse.length == orderLineItemsList.size()) {
             orderRepository.save(order);
+            return "Order placed successfully";
         } else {
             throw new RuntimeException("Product is not available");
         }
 
-        log.info("Order placed successfully with order number: " + order.getOrderNumber());
     }
 }

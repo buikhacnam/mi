@@ -19,15 +19,25 @@ public class InventoryService {
 
 
     @Transactional(readOnly = true)
-    @SneakyThrows
+    @SneakyThrows // to avoid try-catch. Not recommended in production
     public List<InventoryResponse> isInStock(List<String> skuCode) {
-        log.info("Checking Inventory");
-        return inventoryRepository.findBySkuCodeIn(skuCode).stream()
+        log.info("Checking Inventory...");
+
+        // mimic the delay in inventory-service
+//        Thread.sleep(10000); // this will delay the response by 10 seconds which will throw exception cause circuit breaker will timeout after 3 seconds
+
+        log.info("Inventory done checking.");
+
+        List<InventoryResponse> result = inventoryRepository.findBySkuCodeIn(skuCode).stream()
                 .map(inventory ->
                         InventoryResponse.builder()
                                 .skuCode(inventory.getSkuCode())
                                 .isInStock(inventory.getQuantity() > 0)
                                 .build()
                 ).collect(Collectors.toList());
+        for (InventoryResponse each : result) {
+            log.info("Inventory: " + each.isInStock());
+        }
+        return result;
     }
 }
