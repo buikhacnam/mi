@@ -2,6 +2,7 @@ package com.buinam.orderservice.service;
 
 import com.buinam.orderservice.dto.InventoryResponse;
 import com.buinam.orderservice.dto.OrderRequest;
+import com.buinam.orderservice.event.OrderPlacedEvent;
 import com.buinam.orderservice.model.Order;
 import com.buinam.orderservice.model.OrderLineItems;
 import com.buinam.orderservice.repository.OrderRepository;
@@ -10,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.sleuth.Span;
 import org.springframework.cloud.sleuth.Tracer;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -30,6 +32,9 @@ public class OrderService {
 
     @Autowired
     private Tracer tracer;
+
+    @Autowired
+    private KafkaTemplate<String, OrderPlacedEvent> kafkaTemplate;
 
     public String placeOrder(OrderRequest orderRequest) {
         Order order = new Order();
@@ -71,6 +76,7 @@ public class OrderService {
             }
             if (isAllProductsAvailable && inventoryResponse.length == orderLineItemsList.size()) {
                 orderRepository.save(order);
+                kafkaTemplate.send("notificationTopic", new OrderPlacedEvent(order.getOrderNumber()));
                 return "Order placed successfully";
             } else {
                 throw new RuntimeException("Product is not available");
